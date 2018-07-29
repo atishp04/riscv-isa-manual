@@ -473,7 +473,7 @@ SLTIU is similar but compares the values as unsigned numbers (i.e.,
 the immediate is first sign-extended to XLEN bits then treated as an
 unsigned number).  Note, SLTIU {\em rd, rs1, 1} sets {\em rd}
 to 1 if {\em rs1} equals zero, otherwise sets {\em rd} to 0 (assembler
-psuedo-instruction SEQZ {\em rd, rs}).
+pseudoinstruction SEQZ {\em rd, rs}).
 
 ANDI, ORI, XORI are logical operations that perform bitwise AND, OR,
 and XOR on register {\em rs1} and the sign-extended 12-bit immediate
@@ -597,7 +597,7 @@ SLT and SLTU perform signed and unsigned compares
 respectively, writing 1 to {\em rd} if $\mbox{\em rs1} < \mbox{\em
   rs2}$, 0 otherwise.  Note, SLTU {\em rd}, {\em x0}, {\em rs2} sets
 {\em rd} to 1 if {\em rs2} is not equal to zero, otherwise sets {\em
-  rd} to zero (assembler psuedo-instruction SNEZ {\em rd, rs}).  AND, OR, and
+  rd} to zero (assembler pseudoinstruction SNEZ {\em rd, rs}).  AND, OR, and
 XOR perform bitwise logical operations.
 
 SLL, SRL, and SRA perform logical left, logical right, and arithmetic
@@ -626,17 +626,18 @@ held in the lower 5 bits of register {\em rs2}.
 \end{tabular}
 \end{center}
 
-The NOP instruction does not change any user-visible state, except for
-advancing the {\tt pc} and incrementing the instructions-retired
-counter {\tt instret}.  NOP is encoded
-as ADDI {\em x0, x0, 0}.
+The NOP instruction does not change any architecturally visible state, except for
+advancing the {\tt pc} and incrementing any applicable performance
+counters.  NOP is encoded as ADDI {\em x0, x0, 0}.
 
 \begin{commentary}
 NOPs can be used to align code segments to microarchitecturally
 significant address boundaries, or to leave space for inline code
 modifications.  Although there are many possible ways to encode a NOP,
 we define a canonical NOP encoding to allow microarchitectural
-optimizations as well as for more readable disassembly output.
+optimizations as well as for more readable disassembly output.  The
+other NOP encodings are made available for HINT instructions
+(Section~\ref{sec:rv32i-hints}).
 \end{commentary}
 
 \section{Control Transfer Instructions}
@@ -666,7 +667,7 @@ the standard calling convention, and has an encoding that is only one
 bit different than the regular link register.
 \end{commentary}
 
-Plain unconditional jumps (assembler psuedo-instruction J) are encoded as a JAL
+Plain unconditional jumps (assembler pseudoinstruction J) are encoded as a JAL
 with {\em rd}={\tt x0}.
 
 \vspace{-0.2in}
@@ -797,8 +798,8 @@ When two different link registers ({\tt x1} and {\tt x5}) are given as
 support coroutines.  If {\em rs1} and {\em rd} are the same link
 register (either {\tt x1} or {\tt x5}), the RAS is only pushed to
 enable macro-op fusion of the sequences:\linebreak
-{\tt lui ra, imm20; jalr ra, ra, imm12} \ and \ 
-{\tt auipc ra, imm20; jalr ra, ra, imm12}
+{\tt lui ra, imm20; jalr ra, imm12(ra)} \ and \ 
+{\tt auipc ra, imm20; jalr ra, imm12(ra)}
 \end{commentary}
 
 \subsubsection*{Conditional Branches}
@@ -1521,3 +1522,70 @@ instruction cache snooping/invalidation overhead by writing translated
 instructions to memory regions that are known not to reside in the
 I-cache.
 \end{commentary}
+
+\section{HINT Instructions}
+\label{sec:rv32i-hints}
+
+RV32I reserves a large encoding space for HINT instructions, which are
+usually used to communicate performance hints to the
+microarchitecture.  HINTs are encoded as integer computational
+instructions with {\em rd}={\tt x0}.  Hence, like the NOP instruction,
+HINTs do not change any architecturally visible state, except for
+advancing the {\tt pc} and any applicable performance counters.
+Implementations are always allowed to ignore the encoded hints.
+
+\begin{commentary}
+This HINT encoding has been chosen so that simple implementations can ignore
+HINTs altogether, and instead execute a HINT as a regular computational
+instruction that happens not to mutate the architectural state.  For example, ADD is
+a HINT if the destination register is {\tt x0}; the five-bit {\em rs1} and {\em
+rs2} fields encode arguments to the HINT.  However, a simple implementation can
+simply execute the HINT as an ADD of {\em rs1} and {\em rs2} that writes {\tt
+x0}, which has no architecturally visible effect.
+\end{commentary}
+
+Table~\ref{tab:rv32i-hints} lists all RV32I HINT code points.  91\% of the HINT
+space is reserved for standard HINTs, but none are presently defined.  The
+remainder of the HINT space is reserved for custom HINTs: no standard HINTs
+will ever be defined in this subspace.
+
+\begin{commentary}
+No standard hints are presently defined (except the privileged WFI
+instruction which uses a separately reserved encoding).  We anticipate
+standard hints to eventually include memory-system spatial and
+temporal locality hints, branch prediction hints, thread-scheduling
+hints, security tags, and instrumentation flags for
+simulation/emulation.
+\end{commentary}
+
+\begin{table}[hbt]
+\centering
+\begin{tabular}{|l|l|c|l|}
+  \hline
+  Instruction           & Constraints                                 & Code Points & Purpose \\ \hline \hline
+  LUI                   & {\em rd}={\tt x0}                           & $2^{20}$                    & \multirow{15}{*}{\em Reserved for future standard use} \\ \cline{1-3}
+  AUIPC                 & {\em rd}={\tt x0}                           & $2^{20}$                    & \\ \cline{1-3}
+  \multirow{2}{*}{ADDI} & {\em rd}={\tt x0}, and either               & \multirow{2}{*}{$2^{17}-1$} & \\
+                        & {\em rs1}$\neq${\tt x0} or {\em imm}$\neq$0 &                             & \\ \cline{1-3}
+  ANDI                  & {\em rd}={\tt x0}                           & $2^{17}$                    & \\ \cline{1-3}
+  ORI                   & {\em rd}={\tt x0}                           & $2^{17}$                    & \\ \cline{1-3}
+  XORI                  & {\em rd}={\tt x0}                           & $2^{17}$                    & \\ \cline{1-3}
+  ADD                   & {\em rd}={\tt x0}                           & $2^{10}$                    & \\ \cline{1-3}
+  SUB                   & {\em rd}={\tt x0}                           & $2^{10}$                    & \\ \cline{1-3}
+  AND                   & {\em rd}={\tt x0}                           & $2^{10}$                    & \\ \cline{1-3}
+  OR                    & {\em rd}={\tt x0}                           & $2^{10}$                    & \\ \cline{1-3}
+  XOR                   & {\em rd}={\tt x0}                           & $2^{10}$                    & \\ \cline{1-3}
+  SLL                   & {\em rd}={\tt x0}                           & $2^{10}$                    & \\ \cline{1-3}
+  SRL                   & {\em rd}={\tt x0}                           & $2^{10}$                    & \\ \cline{1-3}
+  SRA                   & {\em rd}={\tt x0}                           & $2^{10}$                    & \\ \hline \hline
+  SLTI                  & {\em rd}={\tt x0}                           & $2^{17}$                    & \multirow{7}{*}{\em Reserved for custom use} \\ \cline{1-3}
+  SLTIU                 & {\em rd}={\tt x0}                           & $2^{17}$                    & \\ \cline{1-3}
+  SLLI                  & {\em rd}={\tt x0}                           & $2^{10}$                    & \\ \cline{1-3}
+  SRLI                  & {\em rd}={\tt x0}                           & $2^{10}$                    & \\ \cline{1-3}
+  SRAI                  & {\em rd}={\tt x0}                           & $2^{10}$                    & \\ \cline{1-3}
+  SLT                   & {\em rd}={\tt x0}                           & $2^{10}$                    & \\ \cline{1-3}
+  SLTU                  & {\em rd}={\tt x0}                           & $2^{10}$                    & \\ \hline
+\end{tabular}
+\caption{RV32I HINT instructions.}
+\label{tab:rv32i-hints}
+\end{table}

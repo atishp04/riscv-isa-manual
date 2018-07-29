@@ -509,19 +509,32 @@ ISAs respectively.
 \subsection{Privilege and Global Interrupt-Enable Stack in {\tt mstatus} register}
 \label{privstack}
 
-Interrupt-enable bits, MIE, SIE, and UIE, are provided for each privilege
-mode.  These bits are primarily used to guarantee atomicity with respect to
-interrupt handlers at the current privilege level.  When a hart is executing
-in privilege mode {\em x}, interrupts are enabled when {\em x}\,IE=1.
-Interrupts for lower privilege modes are always disabled, whereas interrupts
-for higher privilege modes are always enabled.  Higher-privilege-level code
-can use separate per-interrupt enable bits to disable selected interrupts
-before ceding control to a lower privilege level.
+Global interrupt-enable bits, MIE, SIE, and UIE, are provided for each
+privilege mode.  These bits are primarily used to guarantee atomicity
+with respect to interrupt handlers in the current privilege mode.
 
 \begin{commentary}
-The {\em x}IE bits are located in the low-order bits of {\tt mstatus},
+The global {\em x}IE bits are located in the low-order bits of {\tt mstatus},
 allowing them to be atomically set or cleared with a single CSR
 instruction.
+\end{commentary}
+
+When a hart is executing in privilege mode {\em x}, interrupts are
+globally enabled when {\em x}\,IE=1 and globally disabled when {\em
+  x}\,IE=0.  Interrupts for lower-privilege modes, {\em w}$<${\em x},
+are always globally disabled regardless of the setting of the
+lower-privilege mode's global {\em w}\,IE bit.  Interrupts for
+higher-privilege modes, {\em y}$>${\em x}, are always globally enabled
+regardless of the setting of the higher-privilege mode's global {\em
+  y}\,IE bit.  Higher-privilege-level code can use separate
+per-interrupt enable bits to disable selected high-privilege-mode
+interrupts before ceding control to a lower-privilege mode.
+
+\begin{commentary}
+  A higher-privilege mode {\em y} could disable all of its interrupts
+  before ceding control to a lower-privilege mode but this would be
+  unusual as it would leave only a synchronous trap, non-maskable
+  interrupt, or reset as means to regain control of the hart.
 \end{commentary}
 
 To support nested traps, each privilege mode {\em x} has a two-level
@@ -661,6 +674,7 @@ Note that, while SUM is ordinarily ignored when not executing in S-mode, it
 not supported.
 
 \subsection{Virtualization Support in {\tt mstatus} Register}
+\label{virt-control}
 
 The TVM (Trap Virtual Memory) bit supports intercepting
 supervisor virtual-memory management operations.  When TVM=1,
@@ -1487,18 +1501,21 @@ to the intermediate value of the comparand:
 
 \subsection{Hardware Performance Monitor}
 
-M-mode includes a basic hardware performance monitoring facility.  The {\tt
-mcycle} CSR holds a count of the number of cycles the hart has executed since
-some arbitrary time in the past.  The {\tt minstret} CSR holds a count of the
-number of instructions the hart has retired since some arbitrary time in the
-past.  The {\tt mcycle} and {\tt minstret} registers have 64-bit precision on
-all RV32, RV64, and RV128 systems.
+M-mode includes a basic hardware performance-monitoring facility.  The
+{\tt mcycle} CSR counts the number of cycles the hart has executed.
+The {\tt minstret} CSR counts the number of instructions the hart has
+retired.  The {\tt mcycle} and {\tt minstret} registers have 64-bit
+precision on all RV32, RV64, and RV128 systems.
+
+The counter registers have an arbitrary value after system reset, and
+can be written with a given value. Any CSR write takes effect after
+the writing instruction has otherwise completed.
 
 The hardware performance monitor includes 29 additional 64-bit event counters, {\tt
 mhpmcounter3}--{\tt mhpmcounter31}.  The event selector CSRs, {\tt
 mhpmevent3}--{\tt mhpmevent31}, are MXLEN-bit \warl\ registers that control which event
 causes the corresponding counter to increment.  The meaning of these events is
-defined by the platform, but event 0 is reserved to mean ``no event.''
+defined by the platform, but event 0 is defined to mean ``no event.''
 All counters should be implemented, but a legal implementation is to hard-wire
 both the counter and its corresponding event selector to 0.
 
@@ -2010,9 +2027,10 @@ MRET/SRET/URET & 0 & PRIV & 0 & SYSTEM \\
 To return after handling a trap, there are separate trap return
 instructions per privilege level: MRET, SRET, and URET.  MRET is
 always provided. SRET must be provided if supervisor mode is
-supported, and should raise an illegal instruction otherwise.
-URET is only provided if user-mode traps are supported, and
-should raise an illegal instruction otherwise.
+supported, and should raise an illegal instruction exception otherwise. SRET
+should also raise an illegal instruction exception when TSR=1 in {\tt mstatus},
+as described in Section~\ref{virt-control}. URET is only provided if user-mode
+traps are supported, and should raise an illegal instruction otherwise.
 An {\em x}\,RET instruction can be executed in privilege mode {\em x}
 or higher, where executing a lower-privilege {\em x}\,RET instruction
 will pop the relevant lower-privilege interrupt enable and privilege
@@ -2038,7 +2056,9 @@ might need servicing.  Execution of the WFI instruction can also be
 used to inform the hardware platform that suitable interrupts should
 preferentially be routed to this hart.  WFI is available in all of the
 supported S and M privilege modes, and optionally available to
-U-mode for implementations that support U-mode interrupts.
+U-mode for implementations that support U-mode interrupts. This instruction may
+raise an illegal instruction exception when TW=1 in {\tt mstatus}, as described
+in Section~\ref{virt-control}.
 
 \vspace{-0.2in}
 \begin{center}
@@ -2920,6 +2940,7 @@ than XLEN bits (e.g., the FSD instruction in RV32D), even when the store
 address is naturally aligned.
 
 \subsection{Physical Memory Protection and Paging}
+\label{pmp-vmem}
 
 The Physical Memory Protection mechanism is designed to compose with the
 page-based virtual memory systems described in Chapter~\ref{supervisor}.  When
